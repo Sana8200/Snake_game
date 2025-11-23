@@ -33,12 +33,13 @@
 #.endm
 #############################################################
 
+
 	.data
 	.align 2
 mytime:	.word 	0x5957
 timstr:	.asciz 	"text more text lots of text\0"
 	.text
-	.globl timetemplate, tick, time2string, delay, hexasc, display_string 
+	.globl timetemplate, tick, time2string, delay, hexasc, display_string, spi_delay_nanos
 
 # Function for displaying a string with a newline at the end	
 display_string:	
@@ -186,8 +187,6 @@ letters:
     
 
 
-
-
 # Delay function runs a busy loop to make delay in the program, inefficient way to create a delay 
 
 # a0   number of milliseconds (ms)   a0 = ms 
@@ -227,6 +226,22 @@ for_loop:                        # inner loop is the for loop's body which count
   # blt x0, a0, while loop     # bgtz is the instruction that makes the outer while loop to repeat  
 
 
+
 exit_delay:                      # Exit point for the function 
     jr ra                        # returning from a subroutine
   # ret 
+
+
+
+
+spi_delay_nanos:
+    /* * Target: Roughly 100ns delay (e.g., 5 cycles at 50MHz, or 10 cycles at 100MHz).
+     * We use a few NOPs to create a minimal, stable delay window for SPI setup/hold times.
+     */
+    nop
+    nop
+    nop
+    nop
+    nop
+    
+    ret // Return from the function
