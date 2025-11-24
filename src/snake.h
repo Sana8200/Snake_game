@@ -9,18 +9,18 @@
 // --- Config ---
 #define MAX_SNAKE_LENGTH (GRID_WIDTH * GRID_HEIGHT)
 
-// --- Controls ---
-// Assuming SW0-9. Adjust bits if your board matches different switches.
-#define PAUSE_SWITCH_BIT     (1 << 0) // SW0
-#define WALL_MODE_SWITCH_BIT (1 << 7) // SW7
-#define SPEED_SWITCH_BIT     (1 << 8) // SW8
-#define RESET_SWITCH_BIT     (1 << 9) // SW9
+// --- Switch Controls (10 toggle switches on DE10-Lite) ---
+#define PAUSE_SWITCH_BIT     (1 << 0) // SW0 - Pause/Resume
+#define UP_SWITCH_BIT        (1 << 1) // SW1 - Move Up
+#define DOWN_SWITCH_BIT      (1 << 2) // SW2 - Move Down  
+#define LEFT_SWITCH_BIT      (1 << 3) // SW3 - Move Left
+#define RIGHT_SWITCH_BIT     (1 << 4) // SW4 - Move Right
+#define WALL_MODE_SWITCH_BIT (1 << 7) // SW7 - Wall mode (0=wrap, 1=deadly)
+#define SPEED_SWITCH_BIT     (1 << 8) // SW8 - Speed (0=normal, 1=fast)
+#define RESET_SWITCH_BIT     (1 << 9) // SW9 - Reset game
 
-// Buttons (Active Low logic is handled in snake.c)
-#define KEY_UP_BIT    (1 << 0) // KEY0
-#define KEY_DOWN_BIT  (1 << 1) // KEY1
-#define KEY_LEFT_BIT  (1 << 2) // KEY2
-#define KEY_RIGHT_BIT (1 << 3) // KEY3
+// Note: DE10-Lite only has ONE push button (KEY0)
+// We're not using it for this game, only switches
 
 // --- Public Global State ---
 extern int body_x[MAX_SNAKE_LENGTH];
