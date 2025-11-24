@@ -2,36 +2,22 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/**
- * @brief Sets the 10 LEDs on the board.
- * @param led_mask A 10-bit mask to light up LEDs.
- */
+
 void set_leds(int led_mask){
     *pLEDS = led_mask;
 }
 
-/**
- * @brief Reads the state of the 4 push buttons.
- * @return A 4-bit value representing the buttons (0 = pressed).
- */
+
 int get_btn(void){
     // Note: Buttons are active-low (0 when pressed)
     return (*pPUSH_BUTTONS) & 0xF;    
 }
     
-/**
- * @brief Reads the state of the 10 toggle switches.
- * @return A 10-bit value representing the switches.
- */
+
 int get_sw(void){
     return (*pSWITCHES) & 0x3FF; 
 }
 
-/**
- * @brief Sets one of the six 7-segment displays.
- * @param display_number The display to write to (0-5).
- * @param value The digit to display (0-9).
- */
 void set_display( int display_number, int value){
     // Look up table for 7-segment display (common anode)
     static const int sev_seg_map[] = {       
