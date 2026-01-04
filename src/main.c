@@ -1,7 +1,8 @@
 #include "hardware.h"
 #include "vga_driver.h"
 #include "snake.h" 
-#include "lib.h"
+#include "delay.h"
+#include "dtekv-lib.h"
 
 void handle_interrupt(unsigned cause) {
     // Stub for interrupt handling (if needed later)
