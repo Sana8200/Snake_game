@@ -8,6 +8,8 @@ TOOLCHAIN ?= riscv32-unknown-elf-
 CFLAGS ?= -Wall -nostdlib -O3 -mabi=ilp32 -march=rv32imzicsr -fno-builtin
 
 
+.PHONY: build clean run
+
 build: clean main.bin
 
 
@@ -21,7 +23,7 @@ main.bin: main.elf
 	$(TOOLCHAIN)objdump -D $< > $<.txt
 
 clean:
-	rm -f *.o *.elf *.bin *.txt
+	rm -f *.o main.elf main.bin main.elf.txt
 
 
 TOOL_DIR ?= ./tools

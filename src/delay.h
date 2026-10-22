@@ -3,10 +3,7 @@
 
 #include <stdint.h>
 
-void delay_cycles(uint32_t cycles);
-void delay_us(uint32_t microseconds);
-void delay_ms(uint32_t milliseconds);
-void delay_ns(uint32_t nanoseconds);
-void delay_cycles_asm(uint32_t cycles);  
+// Busy-waits for about the given number of clock cycles (delay_asm.S)
+void delay_cycles_asm(uint32_t cycles);
 
 #endif  /* DELAY_H */

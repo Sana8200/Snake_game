@@ -49,7 +49,7 @@ static const uint8_t font_5x7[][5] = {
     {0x61, 0x51, 0x49, 0x45, 0x43}, // Z - index 38
 };
 
-int get_char_idx(char c) {
+static int get_char_idx(char c) {
     // Numbers 0-9
     if (c >= '0' && c <= '9') {
         return c - '0';  // Returns 0-9
@@ -74,7 +74,7 @@ int get_char_idx(char c) {
     }
 }
 
-int abs(int n) { return (n < 0) ? -n : n; }
+static int iabs(int n) { return (n < 0) ? -n : n; }
 
 void vga_draw_pixel(int x, int y, uint8_t color) {
     if (x >= 0 && x < SCREEN_WIDTH && y >= 0 && y < SCREEN_HEIGHT) {
@@ -100,8 +100,8 @@ void vga_draw_line(int x1, int y1, int x2, int y2, uint8_t color) {
         for (int y = start; y <= end; y++) vga_draw_pixel(x1, y, color);
         return;
     }
-    int dx = abs(x2 - x1), sx = x1 < x2 ? 1 : -1;
-    int dy = -abs(y2 - y1), sy = y1 < y2 ? 1 : -1;
+    int dx = iabs(x2 - x1), sx = x1 < x2 ? 1 : -1;
+    int dy = -iabs(y2 - y1), sy = y1 < y2 ? 1 : -1;
     int err = dx + dy, e2;
     while (1) {
         vga_draw_pixel(x1, y1, color);
@@ -112,7 +112,15 @@ void vga_draw_line(int x1, int y1, int x2, int y2, uint8_t color) {
     }
 }
 
-void vga_draw_char(int x, int y, char c, uint8_t color) {
+void vga_fill_rect(int x, int y, int width, int height, uint8_t color) {
+    for (int row = y; row < y + height; row++) {
+        for (int col = x; col < x + width; col++) {
+            vga_draw_pixel(col, row, color);
+        }
+    }
+}
+
+static void vga_draw_char(int x, int y, char c, uint8_t color) {
     int idx = get_char_idx(c);
     const uint8_t *bitmap = font_5x7[idx];
     
@@ -128,17 +136,17 @@ void vga_draw_char(int x, int y, char c, uint8_t color) {
     }
 }
 
-void vga_draw_string(int x, int y, char *str, uint8_t color) {
+void vga_draw_string(int x, int y, const char *str, uint8_t color) {
     int cur_x = x;
     int cur_y = y;
     
     while (*str) {
         if (*str == '\n') {
-            cur_y += 8;
+            cur_y += CHAR_HEIGHT;
             cur_x = x;  // Return to start X position
         } else {
             vga_draw_char(cur_x, cur_y, *str, color);
-            cur_x += 6;  // Move to next character position
+            cur_x += CHAR_WIDTH;  // Move to next character position
         }
         str++;
     }
@@ -228,10 +236,11 @@ static void draw_snake_body(int px, int py) {
         }
     }
     
-    // Scale pattern (diagonal lines)
+    // Scale pattern (diagonal lines), kept inside the border so moving
+    // the snake doesn't leave stray pixels in the cell next to it
     for(int i = 0; i < 16; i += 4) {
         for(int j = 0; j < 3; j++) {
-            if (i + j < 15) {
+            if (i + j < 12) {
                 vga_draw_pixel(px + 2 + i + j, py + 2 + j, COLOR_LIGHT_GREEN);
                 vga_draw_pixel(px + 2 + i + j, py + 8 + j, COLOR_LIGHT_GREEN);
             }
@@ -297,11 +306,11 @@ void vga_draw_sprite(int grid_x, int grid_y, SpriteType sprite) {
         case SPRITE_SNAKE_HEAD_RIGHT:
             draw_snake_head(pixel_x, pixel_y, 'r');
             break;
+        case SPRITE_SNAKE_BODY:
+            draw_snake_body(pixel_x, pixel_y);
+            break;
         case SPRITE_FOOD_APPLE:
             draw_apple(pixel_x, pixel_y);
-            break;
-        default:
-            draw_snake_body(pixel_x, pixel_y);
             break;
     }
 }
@@ -316,6 +325,6 @@ void vga_draw_sprite_directional(int grid_x, int grid_y, char direction, bool is
             case 'r': vga_draw_sprite(grid_x, grid_y, SPRITE_SNAKE_HEAD_RIGHT); break;
         }
     } else {
-        draw_snake_body(grid_x * BLOCK_SIZE, HEADER_HEIGHT + (grid_y * BLOCK_SIZE));
+        vga_draw_sprite(grid_x, grid_y, SPRITE_SNAKE_BODY);
     }
 }

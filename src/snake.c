@@ -1,60 +1,117 @@
+#include <stddef.h>
 #include "snake.h"
 
 // --- Game State Variables ---
-int body_x[MAX_SNAKE_LENGTH];
-int body_y[MAX_SNAKE_LENGTH];
-int length = 0;
-int score = 0;
-bool game_over = false;
-bool is_paused = false;
+static int body_x[MAX_SNAKE_LENGTH];
+static int body_y[MAX_SNAKE_LENGTH];
+static int length = 0;
+static int score = 0;
+static int best_score = 0;
+static bool game_over = false;
+static bool is_paused = false;
 
-int food_x = 0;
-int food_y = 0;
-char dir = 'r';
-char next_dir = 'r';
-bool last_pause_state = false;
+static int food_x = 0;
+static int food_y = 0;
+static char dir = 'r';
+static char next_dir = 'r';
 
-// Track last switch state to detect edges
+// Last state of SW1-SW4, to detect which switch was flipped
 static int last_direction_sw = 0;
 
+// The RNG keeps running between games, and the number of input polls
+// (which depends on when the player resets) is mixed in at each reset
 static unsigned long rng_seed = 1;
+static unsigned int poll_count = 0;
 
-int rand_range(int min, int max)
+// --- HUD Layout ---
+#define SCORE_X        45
+#define HUD_TEXT_Y     5
+#define CONTROLS_X     130
+
+// Pause and game over messages are drawn in a box in the middle of the play
+// area, lined up with the grid so it covers whole cells
+#define MSG_BOX_X      (5 * BLOCK_SIZE)
+#define MSG_BOX_Y      (HEADER_HEIGHT + 5 * BLOCK_SIZE)
+#define MSG_BOX_WIDTH  (10 * BLOCK_SIZE)
+#define MSG_BOX_HEIGHT (3 * BLOCK_SIZE)
+
+static int rand_range(int min, int max)
 {
     rng_seed = rng_seed * 1103515245 + 12345;
     unsigned int r = (rng_seed >> 16) & 0x7FFF;
     return min + (r % (max - min));
 }
 
-void draw_score_hud()
+// Writes str to buf and returns a pointer to the terminating '\0'
+static char *write_str(char *buf, const char *str)
 {
-    char buf[16];
-    int temp = score;
-    int i = 0;
+    while (*str)
+        *buf++ = *str++;
+    *buf = '\0';
+    return buf;
+}
 
-    if (temp == 0)
+// Writes value in decimal to buf and returns a pointer to the terminating '\0'
+static char *write_int(char *buf, int value)
+{
+    char digits[12];
+    int n = 0;
+
+    do
     {
-        buf[i++] = '0';
+        digits[n++] = (value % 10) + '0';
+        value /= 10;
+    } while (value > 0);
+
+    while (n > 0)
+        *buf++ = digits[--n];
+    *buf = '\0';
+    return buf;
+}
+
+static void draw_centered(int y, const char *str, uint8_t color)
+{
+    int n = 0;
+    while (str[n])
+        n++;
+    vga_draw_string((SCREEN_WIDTH - n * CHAR_WIDTH) / 2, y, str, color);
+}
+
+// detail may be NULL
+static void show_message(const char *title, uint8_t title_color, const char *detail, const char *hint)
+{
+    int left = MSG_BOX_X;
+    int right = MSG_BOX_X + MSG_BOX_WIDTH - 1;
+    int top = MSG_BOX_Y;
+    int bottom = MSG_BOX_Y + MSG_BOX_HEIGHT - 1;
+
+    vga_fill_rect(MSG_BOX_X, MSG_BOX_Y, MSG_BOX_WIDTH, MSG_BOX_HEIGHT, COLOR_BLACK);
+    vga_draw_line(left, top, right, top, COLOR_WHITE);
+    vga_draw_line(left, bottom, right, bottom, COLOR_WHITE);
+    vga_draw_line(left, top, left, bottom, COLOR_WHITE);
+    vga_draw_line(right, top, right, bottom, COLOR_WHITE);
+
+    if (detail)
+    {
+        draw_centered(MSG_BOX_Y + 10, title, title_color);
+        draw_centered(MSG_BOX_Y + 20, detail, COLOR_YELLOW);
+        draw_centered(MSG_BOX_Y + 30, hint, COLOR_WHITE);
     }
     else
     {
-        while (temp > 0)
-        {
-            buf[i++] = (temp % 10) + '0';
-            temp /= 10;
-        }
+        draw_centered(MSG_BOX_Y + 14, title, title_color);
+        draw_centered(MSG_BOX_Y + 26, hint, COLOR_WHITE);
     }
-    buf[i] = '\0';
+}
 
-    for (int j = 0; j < i / 2; j++)
-    {
-        char t = buf[j];
-        buf[j] = buf[i - 1 - j];
-        buf[i - 1 - j] = t;
-    }
+static void draw_score_hud(void)
+{
+    char buf[12];
+    write_int(buf, score);
 
-    vga_draw_string(45, 5, "     ", COLOR_BLACK);
-    vga_draw_string(45, 5, buf, COLOR_YELLOW);
+    // Text is drawn without a background, so clear the old score first
+    vga_fill_rect(SCORE_X, HUD_TEXT_Y, 5 * CHAR_WIDTH, CHAR_HEIGHT, COLOR_BLACK);
+    vga_draw_string(SCORE_X, HUD_TEXT_Y, buf, COLOR_YELLOW);
 
     set_display(0, score % 10);
     set_display(1, (score / 10) % 10);
@@ -62,7 +119,19 @@ void draw_score_hud()
     set_display(3, (score / 1000) % 10);
 }
 
-void spawn_food()
+static void draw_snake(void)
+{
+    for (int i = 0; i < length; i++)
+        vga_draw_sprite_directional(body_x[i], body_y[i], dir, i == 0);
+}
+
+// LEDs 0-9 show the snake length
+static void update_leds(void)
+{
+    set_leds((length >= 10) ? 0x3FF : ((1 << length) - 1));
+}
+
+static void spawn_food(void)
 {
     bool valid = false;
     int attempts = 0;
@@ -91,7 +160,25 @@ void spawn_food()
     vga_draw_sprite(food_x, food_y, SPRITE_FOOD_APPLE);
 }
 
-void snake_init()
+static void end_game(void)
+{
+    char detail[32];
+
+    game_over = true;
+    if (score > best_score)
+    {
+        best_score = score;
+        write_int(write_str(detail, "NEW BEST: "), score);
+    }
+    else
+    {
+        char *p = write_int(write_str(detail, "SCORE: "), score);
+        write_int(write_str(p, "  BEST: "), best_score);
+    }
+    show_message("GAME OVER", COLOR_RED, detail, "SW9 TO RESTART");
+}
+
+void snake_init(void)
 {
     score = 0;
     length = 5;
@@ -99,9 +186,11 @@ void snake_init()
     next_dir = 'r';
     game_over = false;
     is_paused = false;
-    last_direction_sw = 0;
 
-    rng_seed = get_sw() + 12345;
+    int sw = get_sw();
+    // Switches already on at reset shouldn't count as a flip
+    last_direction_sw = sw & DIRECTION_SWITCH_MASK;
+    rng_seed += sw + poll_count;
 
     int start_x = 10;
     int start_y = 6;
@@ -114,115 +203,72 @@ void snake_init()
     vga_clear_screen(COLOR_BLACK);
 
     // Draw HUD with control instructions
-    vga_draw_string(5, 5, "SCORE:", COLOR_WHITE);
-    vga_draw_string(140, 5, "SW1234:MOVE SW0:PAUSE SW9:RESET", COLOR_YELLOW);
+    vga_draw_string(5, HUD_TEXT_Y, "SCORE:", COLOR_WHITE);
+    vga_draw_string(CONTROLS_X, HUD_TEXT_Y, "SW1234:MOVE SW0:PAUSE SW9:RESET", COLOR_YELLOW);
     vga_draw_line(0, HEADER_HEIGHT - 1, SCREEN_WIDTH - 1, HEADER_HEIGHT - 1, COLOR_WHITE);
 
     draw_score_hud();
     spawn_food();
-
-    // Draw initial snake with sprites
-    for (int i = 0; i < length; i++)
-    {
-        if (i == 0)
-        {
-            // Head sprite with direction
-            vga_draw_sprite_directional(body_x[i], body_y[i], dir, true);
-        }
-        else
-        {
-            // Body sprite
-            vga_draw_sprite_directional(body_x[i], body_y[i], dir, false);
-        }
-    }
-
-    int led_mask = (length >= 10) ? 0x3FF : ((1 << length) - 1);
-    set_leds(led_mask);
+    draw_snake();
+    update_leds();
 }
 
-void snake_update_input()
+void snake_update_input(void)
 {
+    poll_count++;
+
     if (game_over)
         return;
 
     int sw = get_sw();
 
-    // Pause toggle (SW0)
-    bool pause_now = (sw & PAUSE_SWITCH_BIT);
-    if (pause_now && !last_pause_state)
+    // The game is paused while SW0 is on
+    bool pause_now = (sw & PAUSE_SWITCH_BIT) != 0;
+    if (pause_now != is_paused)
     {
-        is_paused = !is_paused;
+        is_paused = pause_now;
         if (is_paused)
         {
-            vga_draw_string(120, 100, "PAUSED", COLOR_YELLOW);
-            vga_draw_string(80, 120, "FLIP SW0 TO RESUME", COLOR_WHITE);
+            show_message("PAUSED", COLOR_YELLOW, NULL, "SW0 OFF TO RESUME");
         }
         else
         {
-            vga_draw_string(120, 100, "      ", COLOR_BLACK);
-            vga_draw_string(80, 120, "                  ", COLOR_BLACK);
-
-            // Redraw food sprite
+            // Clear the message and redraw what it covered
+            vga_fill_rect(MSG_BOX_X, MSG_BOX_Y, MSG_BOX_WIDTH, MSG_BOX_HEIGHT, COLOR_BLACK);
             vga_draw_sprite(food_x, food_y, SPRITE_FOOD_APPLE);
-
-            // Redraw snake with sprites
-            for (int i = 0; i < length; i++)
-            {
-                if (i == 0)
-                {
-                    vga_draw_sprite_directional(body_x[i], body_y[i], dir, true);
-                }
-                else
-                {
-                    vga_draw_sprite_directional(body_x[i], body_y[i], dir, false);
-                }
-            }
+            draw_snake();
         }
     }
-    last_pause_state = pause_now;
 
     if (is_paused)
         return;
 
-    if (get_btn)
-    {
-        return;
-    }
-
-    // Direction control using SW1-SW4 (bits 1-4)
-    // Extract direction switches
-    int direction_sw = (sw >> 1) & 0x0F; // Get bits 1-4
-
-    // Only change direction when a switch changes state (edge detection)
-    // This prevents continuous direction changes while switch is held
-    if (direction_sw != last_direction_sw && direction_sw != 0)
-    {
-        // SW1 (bit 1) = UP
-        if ((direction_sw & 0x01) && dir != 'd')
-        {
-            next_dir = 'u';
-        }
-        // SW2 (bit 2) = DOWN
-        else if ((direction_sw & 0x02) && dir != 'u')
-        {
-            next_dir = 'd';
-        }
-        // SW3 (bit 3) = LEFT
-        else if ((direction_sw & 0x04) && dir != 'r')
-        {
-            next_dir = 'l';
-        }
-        // SW4 (bit 4) = RIGHT
-        else if ((direction_sw & 0x08) && dir != 'l')
-        {
-            next_dir = 'r';
-        }
-    }
-
+    // Flipping SW1-SW4 either way turns the snake in that switch's direction,
+    // so it doesn't matter which switches were left on
+    int direction_sw = sw & DIRECTION_SWITCH_MASK;
+    int flipped = direction_sw ^ last_direction_sw;
     last_direction_sw = direction_sw;
+
+    // The snake can't reverse into itself
+    if ((flipped & UP_SWITCH_BIT) && dir != 'd')
+    {
+        next_dir = 'u';
+    }
+    else if ((flipped & DOWN_SWITCH_BIT) && dir != 'u')
+    {
+        next_dir = 'd';
+    }
+    else if ((flipped & LEFT_SWITCH_BIT) && dir != 'r')
+    {
+        next_dir = 'l';
+    }
+    else if ((flipped & RIGHT_SWITCH_BIT) && dir != 'l')
+    {
+        next_dir = 'r';
+    }
 }
 
-void snake_update_state()
+void snake_update_state(void)
 {
     if (game_over || is_paused)
         return;
@@ -273,6 +319,7 @@ void snake_update_state()
             head_y = 0;
     }
 
+    // The tail moves out of the way this step, so it's not checked
     bool hit_self = false;
     for (int i = 0; i < length - 1; i++)
     {
@@ -285,29 +332,22 @@ void snake_update_state()
 
     if (hit_wall || hit_self)
     {
-        game_over = true;
-        vga_draw_string(100, 110, "GAME OVER", COLOR_RED);
-        vga_draw_string(80, 130, "SW9 TO RESTART", COLOR_WHITE);
+        end_game();
         return;
     }
 
     bool ate = (head_x == food_x && head_y == food_y);
 
-    if (!ate)
-    {
-        // Erase tail (draw black block)
-        vga_draw_block(body_x[length - 1], body_y[length - 1], COLOR_BLACK);
-    }
-    else
+    if (ate)
     {
         if (length < MAX_SNAKE_LENGTH)
             length++;
         score++;
-        draw_score_hud();
-        spawn_food();
-
-        int led_mask = (length >= 10) ? 0x3FF : ((1 << length) - 1);
-        set_leds(led_mask);
+    }
+    else
+    {
+        // Erase tail (draw black block)
+        vga_draw_block(body_x[length - 1], body_y[length - 1], COLOR_BLACK);
     }
 
     for (int i = length - 1; i > 0; i--)
@@ -319,7 +359,14 @@ void snake_update_state()
     body_x[0] = head_x;
     body_y[0] = head_y;
 
-    // Draw updated snake with sprites!
+    if (ate)
+    {
+        // Done after moving, so the new food can't land on the new head
+        draw_score_hud();
+        spawn_food();
+        update_leds();
+    }
+
     // Old head becomes body
     if (length > 1)
     {
