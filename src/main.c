@@ -8,6 +8,13 @@ void handle_interrupt(unsigned cause) {
     // Stub for interrupt handling (if needed later)
 }
 
+// One unit is 3000 loop iterations of 9 cycles, about 0.9 ms at 30 MHz
+#define DELAY_UNIT_CYCLES 27000u
+
+static void game_delay(uint32_t units) {
+    delay_cycles_asm(units * DELAY_UNIT_CYCLES);
+}
+
 int main() {
     // Turn off all LEDs at start
     set_leds(0); 

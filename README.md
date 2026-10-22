@@ -111,7 +111,7 @@ make
 
 ## License
 
-See COPYING file for license information.
+See [COPYING](COPYING) for license information.
 
 ## Authors
 
