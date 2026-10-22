@@ -29,7 +29,7 @@ int main() {
             snake_init();
             // Wait for switch to be released to avoid multiple resets
             while(get_sw() & RESET_SWITCH_BIT) {
-                delay(50);
+                game_delay(50);
             }
         }
         
@@ -41,9 +41,9 @@ int main() {
 
         // Speed control using SW8
         if (get_sw() & SPEED_SWITCH_BIT) {
-            delay(150);  // Fast mode
+            game_delay(150);  // Fast mode
         } else {
-            delay(400);  // Normal mode
+            game_delay(400);  // Normal mode
         }
     }
     
